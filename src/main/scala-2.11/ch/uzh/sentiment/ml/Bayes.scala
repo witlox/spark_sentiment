@@ -8,7 +8,7 @@ import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{avg, expr}
 
-object NaiveBayes {
+object Bayes {
 
   val log: Logger = LogManager.getLogger(getClass.getName)
 
