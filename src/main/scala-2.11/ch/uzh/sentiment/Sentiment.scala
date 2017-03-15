@@ -16,8 +16,8 @@ object Sentiment {
     head("sentiment", "0.2")
 
     opt[Seq[String]]("inputs") required() valueName "<file>,<dir>,..." action { (x, c) => c.copy(inputs = x) } text "inputs to analyze"
-    opt[String]("model") valueName "<path>" action { (x, c) => c.copy(model = x) } text "path to save the model to/load the model from"
-    opt[String]("classifier") valueName "<name>" action { (x, c) => c.copy(model = x) } text "classifier to use during training: logistic, naivebayes, maxentropy or svm (not setting this will run all classifiers = SLOW)"
+    opt[String]("model") valueName "<path>" action { (x, c) => c.copy(model = Some(x)) } text "path to save the model to/load the model from"
+    opt[String]("classifier") valueName "<classifier>" action { (x, c) => c.copy(classifier = Some(x)) } text "classifier to use during training: logistic, naivebayes, maxentropy or svm (not setting this will run all classifiers = SLOW)"
     opt[String]("filetype") valueName "file type" action { (x, c) => c.copy(inputFileType = Some(x)) } text "input files type (json, csv, txt, parquet)"
     opt[String]("column") valueName "column" action { (x, c) => c.copy(column = Some(x)) } text "column that contains the text"
     opt[String]("output") valueName "<file>" action { (x, c) => c.copy(output = Some(x)) } text "output to write to, note that the output format is same as input format"
@@ -42,6 +42,16 @@ object Sentiment {
         if (config.very_verbose) {
           LogManager.getRootLogger.setLevel(Level.DEBUG)
         }
+        val modelPath = if (config.model.isDefined) {
+          config.model.get
+        } else {
+          "sentiment.model"
+        }
+        val classifier = if (config.classifier.isDefined) {
+          config.classifier.get
+        } else {
+          "all"
+        }
         val spark = SparkSession
           .builder
           .appName("uzhTweetSentiment")
@@ -54,18 +64,18 @@ object Sentiment {
 
         if (config.train) {
           log.info("constructing training data")
-          val tset = TrainingSet.getTrainingAndTestingDataFrames(config.inputs, config.inputFileType, spark, config.limit, verbosity)
-          if (tset.isEmpty) {
+          val tSet = TrainingSet.getTrainingAndTestingDataFrames(config.inputs, config.inputFileType, spark, config.limit, verbosity)
+          if (tSet.isEmpty) {
             log.error("could not detect training data")
             sys.exit(-3)
           }
           log.info("cleaning data and paths")
-          val training = tset.map(t => Helper.cleanSource(Detection.detectTextColumn(t, config.limit).get, outputColumn, t)).get
-          Helper.clean(spark, config.model)
-          log.info("training machine learning model")
-          val (model, name, precision) = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit, config.classifier)
-          model.save(config.model)
-          log.info("saved " + name + " with precision " + precision + "%")
+          val training = tSet.map(t => Helper.cleanSource(Detection.detectTextColumn(t, config.limit).get, outputColumn, t)).get
+          Helper.clean(spark, modelPath)
+          log.info("training machine learning model with classifier " + classifier)
+          val (model, name, precision) = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit, classifier)
+          model.save(modelPath)
+          log.info("saved " + name + " with precision " + precision + "% to " + modelPath)
         } else {
 
           if (config.output.isDefined) {
@@ -103,8 +113,8 @@ object Sentiment {
                 }
 
                 if (config.method.isEmpty || config.method.get.toLowerCase == "mlib") {
-                  log.info("loading MLib model")
-                  val model = MlLibSentimentAnalyser.load(config.model)
+                  log.info("loading MLib model from " + modelPath)
+                  val model = MlLibSentimentAnalyser.load(modelPath)
                   log.info("select sentiment data using MLib")
                   val output = model.transform(cleaned)
                   process(config, output.toDF, dtype)
@@ -151,8 +161,8 @@ object Sentiment {
   }
 
   case class Config(inputs: Seq[String] = Seq(),
-                    model: String = "sentiment.model",
-                    classifier: String = "",
+                    model: Option[String] = None,
+                    classifier: Option[String] = None,
                     inputFileType: Option[String] = None,
                     output: Option[String] = None,
                     column: Option[String] = None,

@@ -21,12 +21,15 @@ object MlLibSentimentAnalyser {
 
     val (selection, precision, name) = classifier match {
       case "logistic" =>
+        log.debug("executing logistic regression pipeline")
         val r = ml.Regression.execute(timer, idf_pipeline, training_df, validation_df, score, tfidf)
         (r._1, r._2, "logistic regression")
       case "naivebayes" =>
+        log.debug("executing naive bayes pipeline")
         val r = ml.NaiveBayes.execute(timer, idf_pipeline, training_df, validation_df, score, tfidf)
         (r._1, r._2, "naive bayes")
       case "maxentropy" =>
+        log.debug("executing random forrest pipeline")
         val r = ml.MaximumEntropy.execute(timer, idf_pipeline, training_df, validation_df, score, tfidf)
         (r._1, r._2, "maximum entropy")
       case _ =>
