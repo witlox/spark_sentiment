@@ -152,7 +152,7 @@ object Sentiment {
 
   case class Config(inputs: Seq[String] = Seq(),
                     model: String = "sentiment.model",
-                    classifier: String = "logistic",
+                    classifier: String = "",
                     inputFileType: Option[String] = None,
                     output: Option[String] = None,
                     column: Option[String] = None,
