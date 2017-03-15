@@ -10,12 +10,12 @@ import edu.stanford.nlp.sentiment.SentimentCoreAnnotations
 import org.apache.log4j.{LogManager, Logger}
 
 import scala.collection.JavaConversions._
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
-class CoreNLPSentimentAnalyzer(timing: Boolean) {
+class CoreNLPSentimentAnalyzer {
 
   val log: Logger = LogManager.getLogger(getClass.getName)
-  val timer: Timing = new Timing(timing)
+  val timer: Timing = new Timing()
 
   class StanfordCoreNLPWrapper(private val props: Properties) extends Serializable {
 
@@ -39,10 +39,17 @@ class CoreNLPSentimentAnalyzer(timing: Boolean) {
     return_val
   }
 
-  lazy val pipeline = {
+  lazy val pipeline: StanfordCoreNLPWrapper = {
     log.debug("setting up new pipeline")
     val props = new Properties()
     props.setProperty("annotators", "tokenize, ssplit, pos, lemma, parse, sentiment")
+    new StanfordCoreNLPWrapper(props)
+  }
+
+  lazy val lemmaPipeline: StanfordCoreNLPWrapper = {
+    log.debug("setting up new lemmatisation pipeline")
+    val props = new Properties()
+    props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
     new StanfordCoreNLPWrapper(props)
   }
 
@@ -53,7 +60,7 @@ class CoreNLPSentimentAnalyzer(timing: Boolean) {
   }
 
   def extractSentiments(text: String): List[(String, Int)] = {
-    val annotation: Annotation = timer.time("process annotations", { pipeline.get.process(text) })
+    val annotation = timer.time("process annotations", { pipeline.get.process(text) })
     val sentences = annotation.get(classOf[CoreAnnotations.SentencesAnnotation])
     sentences
       .map(sentence => (sentence, sentence.get(classOf[SentimentCoreAnnotations.SentimentAnnotatedTree])))
@@ -84,9 +91,17 @@ class CoreNLPSentimentAnalyzer(timing: Boolean) {
     weightedSentiment.toInt
   }
 
-}
+  def textToLemmas(text: String): String = {
+    val annotation = timer.time("process lemmatization", { lemmaPipeline.get.process(text) })
+    val sentences = annotation.get(classOf[CoreAnnotations.SentencesAnnotation])
 
-object CoreNLPSentimentAnalyzer {
-  def apply(timing: Boolean): CoreNLPSentimentAnalyzer = new CoreNLPSentimentAnalyzer(timing)
-
+    val lemmas = new ArrayBuffer[String]()
+    for (sentence <- sentences; token <- sentence.get(classOf[CoreAnnotations.TokensAnnotation])) {
+      val lemma = token.get(classOf[CoreAnnotations.LemmaAnnotation])
+      if (lemma.length > 2) {
+        lemmas += lemma.toLowerCase
+      }
+    }
+    lemmas.mkString(" ")
+  }
 }

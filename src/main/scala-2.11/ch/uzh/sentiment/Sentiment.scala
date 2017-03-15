@@ -15,16 +15,17 @@ object Sentiment {
   val parser = new OptionParser[Config]("scopt") {
     head("sentiment", "0.2")
 
-    opt[Seq[String]]('i', "inputs") required() valueName "<file>,<dir>,..." action { (x, c) => c.copy(inputs = x) } text "inputs to analyze"
-    opt[String]('m', "model") valueName "<path>" action { (x, c) => c.copy(model = x) } text "path to save the model to/load the model from"
+    opt[Seq[String]]("inputs") required() valueName "<file>,<dir>,..." action { (x, c) => c.copy(inputs = x) } text "inputs to analyze"
+    opt[String]("model") valueName "<path>" action { (x, c) => c.copy(model = x) } text "path to save the model to/load the model from"
+    opt[String]("classifier") valueName "<name>" action { (x, c) => c.copy(model = x) } text "classifier to use during training: logistic, naivebayes, maxentropy or svm (not setting this will run all classifiers = SLOW)"
     opt[String]("filetype") valueName "file type" action { (x, c) => c.copy(inputFileType = Some(x)) } text "input files type (json, csv, txt, parquet)"
-    opt[String]('c', "column") valueName "column" action { (x, c) => c.copy(column = Some(x)) } text "column that contains the text"
-    opt[String]('o', "output") valueName "<file>" action { (x, c) => c.copy(output = Some(x)) } text "output to write to, note that the output format is same as input format"
+    opt[String]("column") valueName "column" action { (x, c) => c.copy(column = Some(x)) } text "column that contains the text"
+    opt[String]("output") valueName "<file>" action { (x, c) => c.copy(output = Some(x)) } text "output to write to, note that the output format is same as input format"
     opt[String]("method") valueName "method" action { (x, c) => c.copy(method = Some(x)) } text "methods: mlib (default), our-nlp, databricks-nlp"
     opt[Int]("limit") action { (x, c) => c.copy(limit = x) } text "use this number as sample size for detection (and limit/10 is the display count)"
-    opt[Unit]('t', "train") action { (_, c) => c.copy(train = true) } text "train model using input file"
-    opt[Unit]('v', "verbose") action { (_, c) => c.copy(verbose = true) } text "let's be very chatty (note that setting this will slow down everything)"
-    opt[Unit]("vvvv") action { (_, c) => c.copy(very_verbose = true) } text "let's all be very very chatty (note that setting this will severely slow down everything)"
+    opt[Unit]("train") action { (_, c) => c.copy(train = true) } text "train model using input file"
+    opt[Unit]("verbose") action { (_, c) => c.copy(verbose = true) } text "let's be very chatty (note that setting this will slow down everything)"
+    opt[Unit]("very-verbose") action { (_, c) => c.copy(very_verbose = true) } text "let's all be very very chatty (note that setting this will severely slow down everything)"
 
     help("help") text "Analyze tweet sentiment"
   }
@@ -43,7 +44,7 @@ object Sentiment {
         }
         val spark = SparkSession
           .builder
-          .appName("getTweetsNativeVSImplicit")
+          .appName("uzhTweetSentiment")
           .config("spark.dynamicAllocation.enabled", "true")
           .config("spark.shuffle.service.enabled","true")
           .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -62,8 +63,9 @@ object Sentiment {
           val training = tset.map(t => Helper.cleanSource(Detection.detectTextColumn(t, config.limit).get, outputColumn, t)).get
           Helper.clean(spark, config.model)
           log.info("training machine learning model")
-          val model = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit)
+          val (model, name, precision) = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit, config.classifier)
           model.save(config.model)
+          log.info("saved " + name + " with precision " + precision + "%")
         } else {
 
           if (config.output.isDefined) {
@@ -108,7 +110,7 @@ object Sentiment {
                   process(config, output.toDF, dtype)
                 } else if (config.method.get.toLowerCase == "our-nlp") {
                   log.info("select sentiment data using our CoreNLP method")
-                  val output = cleaned.map(f => (f.getAs[Seq[String]](outputColumn), new CoreNLPSentimentAnalyzer(verbosity).computeSentiment(f.getAs[Seq[String]](outputColumn).mkString(" "))))
+                  val output = cleaned.map(f => (f.getAs[Seq[String]](outputColumn), new CoreNLPSentimentAnalyzer().computeSentiment(f.getAs[Seq[String]](outputColumn).mkString(" "))))
                   process(config, output.toDF, dtype)
                 } else {
                   log.info("select sentiment data CoreNLP databricks")
@@ -150,6 +152,7 @@ object Sentiment {
 
   case class Config(inputs: Seq[String] = Seq(),
                     model: String = "sentiment.model",
+                    classifier: String = "logistic",
                     inputFileType: Option[String] = None,
                     output: Option[String] = None,
                     column: Option[String] = None,

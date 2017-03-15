@@ -5,8 +5,8 @@ import java.nio.file.{Files, Paths}
 
 import org.apache.log4j.{LogManager, Logger}
 import org.apache.spark.ml.feature.{StopWordsRemover, Tokenizer}
-import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 object Helper {
   val log: Logger = LogManager.getLogger(getClass.getName)
@@ -24,9 +24,8 @@ object Helper {
     }
   }
 
-
   def cleanSource(inputColumn: String, outputColumn: String, df: DataFrame) : DataFrame = {
-    val cleaned = df.where(df.col(inputColumn).isNotNull).filter(r => cleanString(r.getAs[String](inputColumn)).nonEmpty)
+    val cleaned = df.where(df.col(inputColumn).isNotNull).filter(r => stemString(cleanString(r.getAs[String](inputColumn))).nonEmpty)
     val tokenizer: Tokenizer = new Tokenizer()
       .setInputCol(inputColumn)
       .setOutputCol("tokens_raw")
@@ -40,17 +39,15 @@ object Helper {
 
   def cleanString(text: String): String = {
     text.toLowerCase()
-      .replaceAll("\n", "")
-      .replaceAll("rt\\s+", "")
-      .replaceAll("\\s+@\\w+", "")
-      .replaceAll("@\\w+", "")
-      .replaceAll("\\s+#\\w+", "")
-      .replaceAll("#\\w+", "")
-      .replaceAll("(?:https?|http?)://[\\w/%.-]+", "")
-      .replaceAll("(?:https?|http?)://[\\w/%.-]+\\s+", "")
-      .replaceAll("(?:https?|http?)//[\\w/%.-]+\\s+", "")
-      .replaceAll("(?:https?|http?)//[\\w/%.-]+", "")
-      .trim
+      .replaceAll("\"", "").replaceAll("'", "")
+      .replaceAll("\n", "").replaceAll("\r\n", "").replaceAll("\t", "")
+      .replaceAll("rt\\s+", "").replaceAll("@\\w+", "").replaceAll("#", "")
+      .replaceAll("http\\S+", "")
+      .replaceAll(" +", " ").replaceAll("\\s+", " ")
+  }
+
+  def stemString(text: String): String = {
+    text.split(" ").map(word => Stemmer.stem(word)).mkString(" ")
   }
 
   def deleteRecursively(file: File) {
