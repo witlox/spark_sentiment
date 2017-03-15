@@ -75,9 +75,9 @@ object MlLibSentimentAnalyser {
       log.info("----------------------------------------------------------------\n\n")
     })
 
-    if (precision < 65.0) log.warn("Precision SUCKS!")
-    else if (precision < 75.0) log.warn("Precision is not that good")
-    else if (precision < 80.0) log.info("Precision is not that bad")
+    if (precision < 0.65) log.warn("Precision SUCKS!")
+    else if (precision < 0.75) log.warn("Precision is not that good")
+    else if (precision < 0.8) log.info("Precision is not that bad")
     else log.info("Precision is awesomepants")
 
     (selection, name, precision)

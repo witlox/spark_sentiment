@@ -75,7 +75,7 @@ object Sentiment {
           log.info("training machine learning model with classifier " + classifier)
           val (model, name, precision) = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit, classifier)
           model.save(modelPath)
-          log.info("saved " + name + " with precision " + precision + "% to " + modelPath)
+          log.info("saved " + name + " with precision " +  math.round(precision *100) + "% to " + modelPath)
         } else {
 
           if (config.output.isDefined) {
