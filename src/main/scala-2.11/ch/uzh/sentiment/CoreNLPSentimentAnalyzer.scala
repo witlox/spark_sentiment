@@ -5,9 +5,11 @@ import java.util.Properties
 import ch.uzh.sentiment.utils.Timing
 import edu.stanford.nlp.ling.CoreAnnotations
 import edu.stanford.nlp.neural.rnn.RNNCoreAnnotations
-import edu.stanford.nlp.pipeline.{Annotation, StanfordCoreNLP}
+import edu.stanford.nlp.pipeline.StanfordCoreNLP
 import edu.stanford.nlp.sentiment.SentimentCoreAnnotations
 import org.apache.log4j.{LogManager, Logger}
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.functions._
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -52,6 +54,10 @@ class CoreNLPSentimentAnalyzer {
     props.setProperty("annotators", "tokenize, ssplit, pos, lemma")
     new StanfordCoreNLPWrapper(props)
   }
+
+  private def computeSentimentWrapper: (String => Int) = (text: String) => computeSentiment(text)
+
+  def computeSentimentUDF: UserDefinedFunction = udf(computeSentimentWrapper)
 
   def computeSentiment(text: String): Int = {
     val (_, sentiment) = extractSentiments(text)

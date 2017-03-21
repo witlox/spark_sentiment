@@ -1,9 +1,10 @@
 package ch.uzh.sentiment
 
-import ch.uzh.sentiment.utils.{Detection, Helper, IO}
+import ch.uzh.sentiment.utils.{Detection, Helper, IO, WordList}
 import com.databricks.spark.corenlp.functions._
 import org.apache.log4j.{Level, LogManager, Logger}
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
 import scopt.OptionParser
 
 object Sentiment {
@@ -21,8 +22,9 @@ object Sentiment {
     opt[String]("filetype") valueName "file type" action { (x, c) => c.copy(inputFileType = Some(x)) } text "input files type (json, csv, txt, parquet)"
     opt[String]("column") valueName "column" action { (x, c) => c.copy(column = Some(x)) } text "column that contains the text"
     opt[String]("output") valueName "<file>" action { (x, c) => c.copy(output = Some(x)) } text "output to write to, note that the output format is same as input format"
-    opt[String]("method") valueName "method" action { (x, c) => c.copy(method = Some(x)) } text "methods: mlib (default), our-nlp, databricks-nlp"
+    opt[String]("method") valueName "method" action { (x, c) => c.copy(method = Some(x)) } text "methods: word-score (default), mlib, our-nlp, databricks-nlp"
     opt[Int]("limit") action { (x, c) => c.copy(limit = x) } text "use this number as sample size for detection (and limit/10 is the display count)"
+    opt[Unit]("stem") action { (x, c) => c.copy(stem = false) } text "use porter stemmer on source data (default = true, disable when training word-score)"
     opt[Unit]("train") action { (_, c) => c.copy(train = true) } text "train model using input file"
     opt[Unit]("verbose") action { (_, c) => c.copy(verbose = true) } text "let's be very chatty (note that setting this will slow down everything)"
     opt[Unit]("very-verbose") action { (_, c) => c.copy(very_verbose = true) } text "let's all be very very chatty (note that setting this will severely slow down everything)"
@@ -63,23 +65,40 @@ object Sentiment {
         import spark.implicits._
 
         if (config.train) {
-          log.info("constructing training data")
-          val tSet = TrainingSet.getTrainingAndTestingDataFrames(config.inputs, config.inputFileType, spark, config.limit, verbosity)
-          if (tSet.isEmpty) {
-            log.error("could not detect training data")
-            sys.exit(-3)
+          if (config.method.isEmpty || config.method.get.toLowerCase == "word-score") {
+            log.info("trying to generate word classification lists")
+            val sources = config.inputs.map(i => IO.loadFile(config.inputFileType, i, spark))
+            val valueMaps = sources.flatMap { s =>
+              val column = Detection.detectTextColumn(s.get._1, config.limit).get
+              val cleaned = Helper.cleanSource(column, outputColumn, s.get._1, stem = true)
+              CreateScoreList.score(spark, cleaned, outputColumn, config.limit)
+            }
+
+            valueMaps.distinct.foreach(vm =>
+              spark.sparkContext.parallelize(vm._2)
+                .repartition(1)
+                .saveAsTextFile("wl" + vm._1 + ".txt")
+            )
+
+          } else {
+            log.info("constructing training data")
+            val tSet = TrainingSet.getTrainingAndTestingDataFrames(config.inputs, config.inputFileType, config.limit, verbosity, spark)
+            if (tSet.isEmpty) {
+              log.error("could not detect training data")
+              sys.exit(-3)
+            }
+            log.info("cleaning data and paths")
+            val training = tSet.map(t => Helper.cleanSource(Detection.detectTextColumn(t, config.limit).get, outputColumn, t, config.stem)).get
+            Helper.clean(modelPath, spark)
+            log.info("training machine learning model with classifier " + classifier)
+            val (model, name, precision) = MlLibSentimentAnalyser.train(training, outputColumn, config.verbose, config.very_verbose, config.limit, classifier)
+            model.save(modelPath)
+            log.info("saved " + name + " with precision " + math.round(precision * 100) + "% to " + modelPath)
           }
-          log.info("cleaning data and paths")
-          val training = tSet.map(t => Helper.cleanSource(Detection.detectTextColumn(t, config.limit).get, outputColumn, t)).get
-          Helper.clean(spark, modelPath)
-          log.info("training machine learning model with classifier " + classifier)
-          val (model, name, precision) = MlLibSentimentAnalyser.train(spark, training, outputColumn, config.verbose, config.very_verbose, config.limit, classifier)
-          model.save(modelPath)
-          log.info("saved " + name + " with precision " +  math.round(precision *100) + "% to " + modelPath)
         } else {
 
           if (config.output.isDefined) {
-            Helper.clean(spark, config.output.get)
+            Helper.clean(config.output.get, spark)
           }
 
           log.info("loading files from " + config.inputs.foreach(println))
@@ -91,11 +110,6 @@ object Sentiment {
 
               val data = source.get._1
               val dtype = source.get._2
-              if (config.very_verbose) {
-                log.debug("Got " + data.count() + " lines.")
-                display(math.ceil(config.limit/10).toInt, data)
-              }
-
               val column = if (config.column.isEmpty) {
                   Detection.detectTextColumn(data, config.limit)
               } else {
@@ -104,28 +118,37 @@ object Sentiment {
               if (column.isEmpty) {
                 log.error("could not find a text column to analyse for " + name)
               } else {
-                log.info("selected column: " + column)
+                log.info("selected column: " + column.get)
+                if (config.very_verbose) {
+                  log.debug("Got " + data.count() + " lines.")
+                  display(math.ceil(config.limit/10).toInt, column.get, None, data)
+                }
 
-                val cleaned = Helper.cleanSource(column.get, outputColumn, data)
+                val cleaned = Helper.cleanSource(column.get, outputColumn, data, config.stem)
                 if (verbosity) {
                   log.debug("cleaned source data:")
                   cleaned.show(math.ceil(config.limit/10).toInt)
                 }
 
-                if (config.method.isEmpty || config.method.get.toLowerCase == "mlib") {
+                if (config.method.isEmpty || config.method.get.toLowerCase == "word-score") {
+                  val wl = spark.sparkContext.broadcast(new WordList())
+                  log.info("building word score")
+                  val output = cleaned.withColumn("computed", new PlainTextAnalyser(wl).computeSentimentUDF(col(outputColumn)))
+                  process(config, output, column.get, Some("computed"), dtype)
+                } else if (config.method.get.toLowerCase == "mlib") {
                   log.info("loading MLib model from " + modelPath)
                   val model = MlLibSentimentAnalyser.load(modelPath)
                   log.info("select sentiment data using MLib")
                   val output = model.transform(cleaned)
-                  process(config, output.toDF, dtype)
+                  process(config, output.toDF, column.get, Some("score"), dtype)
                 } else if (config.method.get.toLowerCase == "our-nlp") {
                   log.info("select sentiment data using our CoreNLP method")
-                  val output = cleaned.map(f => (f.getAs[Seq[String]](outputColumn), new CoreNLPSentimentAnalyzer().computeSentiment(f.getAs[Seq[String]](outputColumn).mkString(" "))))
-                  process(config, output.toDF, dtype)
+                  val output = cleaned.withColumn("computed", new CoreNLPSentimentAnalyzer().computeSentimentUDF(col(outputColumn)))
+                  process(config, output.toDF, column.get, Some("computed"), dtype)
                 } else {
                   log.info("select sentiment data CoreNLP databricks")
                   val output = cleaned.withColumn("sentiment", sentiment(Symbol(outputColumn)))
-                  process(config, output, dtype)
+                  process(config, output, column.get, Some("computed"), dtype)
                 }
               }
             }
@@ -139,21 +162,29 @@ object Sentiment {
     }
   }
 
-  private def display(count: Int, data: DataFrame) = {
+  private def display(count: Int, textColumn: String, scoreColumn: Option[String], data: DataFrame) = {
     if (count == 0) {
       log.info("displaying contents:")
-      log.info(data.collect.foreach(println))
+      if (scoreColumn.isDefined) {
+        log.info(data.select(col(textColumn), col(scoreColumn.get)).collect.foreach(println))
+      } else {
+        log.info(data.select(col(textColumn)).collect.foreach(println))
+      }
     } else {
       log.info("displaying first " + count + " contents:")
-      log.info(data.take(count).foreach(println))
+      if (scoreColumn.isDefined) {
+        log.info(data.select(col(textColumn), col(scoreColumn.get)).take(count).foreach(println))
+      } else {
+        log.info(data.select(col(textColumn)).take(count).foreach(println))
+      }
     }
   }
 
-  private def process(config: Config, output: DataFrame, dtype: String) = {
+  private def process(config: Config, output: DataFrame, textColumn: String, scoreColumn: Option[String], dtype: String) = {
     val data = if (!config.very_verbose) {
       output.drop("filtered").drop("words").drop("tf").drop("tfidf").drop("rawPrediction").drop("probability")
     } else output
-    display(math.ceil(config.limit/10).toInt, data)
+    display(math.ceil(config.limit/10).toInt, textColumn, scoreColumn, data)
     if (config.output.isDefined) {
       log.info("saving sentiments")
       IO.save(dtype, data, config.output.get)
@@ -169,6 +200,7 @@ object Sentiment {
                     method: Option[String] = None,
                     limit: Int = 100,
                     train: Boolean = false,
+                    stem: Boolean = true,
                     verbose: Boolean = false,
                     very_verbose: Boolean = false)
 

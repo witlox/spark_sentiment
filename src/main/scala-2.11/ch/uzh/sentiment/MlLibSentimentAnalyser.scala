@@ -4,8 +4,8 @@ import ch.uzh.sentiment.utils.{Detection, Timing}
 import org.apache.log4j.{LogManager, Logger}
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.{Pipeline, PipelineModel}
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SparkSession}
 
 object MlLibSentimentAnalyser {
 
@@ -14,7 +14,7 @@ object MlLibSentimentAnalyser {
   val score = "score"
   val tfidf = "tfidf"
 
-  def train(spark: SparkSession, training: DataFrame, textColumn: String, verbose: Boolean, very_verbose: Boolean, limit: Int, classifier: String) : (PipelineModel, String, Double) = {
+  def train(training: DataFrame, textColumn: String, verbose: Boolean, very_verbose: Boolean, limit: Int, classifier: String) : (PipelineModel, String, Double) = {
     val timer = new Timing
 
     val (labellingColumn, idf_pipeline, training_df, validation_df, testing_df) = prepare(training, textColumn, very_verbose, limit, timer)

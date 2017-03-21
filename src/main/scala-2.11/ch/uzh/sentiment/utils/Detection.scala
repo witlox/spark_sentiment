@@ -1,9 +1,8 @@
 package ch.uzh.sentiment.utils
 
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{avg, col, size, split}
 import ch.uzh.sentiment.utils.Helper._
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions.{avg, col, size, split, _}
 
 object Detection {
 
@@ -72,6 +71,24 @@ object Detection {
       case w :: tail if averageWordCount(df, w, limit).round.toInt != 1 => builderForStrings(tail, acc)
     }
     (builderForInts(detectIntegerColumns(df), Nil), builderForStrings(detectStringColumns(df), Nil))
+  }
+
+  def extractIntegerCategories(spark: SparkSession, df: DataFrame, column: String, limit: Int): Option[Array[Int]] = {
+    import spark.implicits._
+    if (detectIntegerColumns(df).contains(column)) {
+      Some(df.map(r => r.getInt(r.fieldIndex(column))).distinct.collect)
+    } else {
+      None
+    }
+  }
+
+  def extractStringCategories(spark: SparkSession, df: DataFrame, column: String, limit: Int): Option[Array[String]] = {
+    import spark.implicits._
+    if (detectIntegerColumns(df).contains(column)) {
+      Some(df.map(r => r.getString(r.fieldIndex(column))).distinct.collect)
+    } else {
+      None
+    }
   }
 
   def detectCategoricalColumn(df: DataFrame, limit: Int) : Option[(String)] = detectCategoricalColumns(df, limit) match {

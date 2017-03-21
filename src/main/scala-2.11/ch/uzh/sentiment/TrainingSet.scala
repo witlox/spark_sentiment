@@ -1,14 +1,14 @@
 package ch.uzh.sentiment
 
+import ch.uzh.sentiment.utils.{Detection, IO}
 import org.apache.log4j.{LogManager, Logger}
 import org.apache.spark.sql.{DataFrame, SparkSession}
-import utils.{Detection, IO}
 
 object TrainingSet {
 
   val log: Logger = LogManager.getLogger(getClass.getName)
 
-  def getTrainingAndTestingDataFrames(paths: Seq[String], fileType: Option[String], spark: SparkSession, limit: Int, verbose: Boolean): Option[DataFrame] = {
+  def getTrainingAndTestingDataFrames(paths: Seq[String], fileType: Option[String], limit: Int, verbose: Boolean, spark: SparkSession): Option[DataFrame] = {
     val sources = paths.map(i => IO.loadFile(fileType, i, spark))
     if (sources.nonEmpty) {
       if (sources.size == 1 && sources.head.isDefined) {

@@ -15,7 +15,8 @@ lazy val root = (project in file(".")).
       case PathList("org", "apache", xs @ _*) => MergeStrategy.last
       case PathList("com", "google", xs @ _*) => MergeStrategy.last
       case _ => MergeStrategy.first
-    }
+    },
+    unmanagedResourceDirectories in Compile += { baseDirectory.value / "src/main/resources" }
   )
 
 val configVersion = "1.3.0"
