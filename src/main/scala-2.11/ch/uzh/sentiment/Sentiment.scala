@@ -24,12 +24,12 @@ object Sentiment {
     opt[String]("output") valueName "<file>" action { (x, c) => c.copy(output = Some(x)) } text "output to write to, note that the output format is same as input format"
     opt[String]("method") valueName "method" action { (x, c) => c.copy(method = Some(x)) } text "methods: word-score (default), mlib, our-nlp, databricks-nlp"
     opt[Int]("limit") action { (x, c) => c.copy(limit = x) } text "use this number as sample size for detection (and limit/10 is the display count)"
-    opt[Unit]("stem") action { (x, c) => c.copy(stem = false) } text "use porter stemmer on source data (default = true, disable when training word-score)"
+    opt[Unit]("no-stem") action { (x, c) => c.copy(stem = false) } text "do not (Porter) stem source data (for example when training word-score)"
     opt[Unit]("train") action { (_, c) => c.copy(train = true) } text "train model using input file"
     opt[Unit]("verbose") action { (_, c) => c.copy(verbose = true) } text "let's be very chatty (note that setting this will slow down everything)"
     opt[Unit]("very-verbose") action { (_, c) => c.copy(very_verbose = true) } text "let's all be very very chatty (note that setting this will severely slow down everything)"
 
-    help("help") text "Analyze tweet sentiment"
+    help("help") text "Prototype for analysing tweet sentiment"
   }
 
   def main(args: Array[String]) {
@@ -74,10 +74,15 @@ object Sentiment {
               CreateScoreList.score(spark, cleaned, outputColumn, config.limit)
             }
 
+            val dest = if (config.output.isDefined) {
+              config.output.get
+            } else {
+              "wl"
+            }
             valueMaps.distinct.foreach(vm =>
               spark.sparkContext.parallelize(vm._2)
                 .repartition(1)
-                .saveAsTextFile("wl" + vm._1 + ".txt")
+                .saveAsTextFile(dest + vm._1)
             )
 
           } else {
@@ -148,7 +153,7 @@ object Sentiment {
                 } else {
                   log.info("select sentiment data CoreNLP databricks")
                   val output = cleaned.withColumn("sentiment", sentiment(Symbol(outputColumn)))
-                  process(config, output, column.get, Some("computed"), dtype)
+                  process(config, output, column.get, None, dtype)
                 }
               }
             }

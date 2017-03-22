@@ -1,5 +1,8 @@
 package ch.uzh.sentiment.utils
 
+/**
+* See http://snowball.tartarus.org/algorithms/porter/stemmer.html
+**/
 object Stemmer {
 
   def stem(word: String): String = {

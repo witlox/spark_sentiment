@@ -1,8 +1,23 @@
-# spark_sentiment
-Sentiment Analysis using Apache Spark
+# spark sentiment analysis of tweets
 
-Toying around with sentiment analysis using spark
+Twitter Sentiment Analysis using Apache Spark
 
-The idea is to analyze twitter data stored on hdfs, using the different techniques available to us (MlLib & Stanford NLP)
+Toying around with sentiment analysis using spark, this is all extremely experimental.
 
-Inital logistic regression model has been trained using Sentiment140 training data, probably there are better alternatives, but it gives a starting point.
+The idea is to analyze twitter data stored on hdfs, using the different techniques available to us.
+
+You can specify a method which you want to run (or train):
+- Machine learning:
+    - Naive Bayes
+    - Logistic Regression
+    - RandomForrest
+- WordScore
+- CoreNLP (Stanford)
+
+The machine learning models can be trained, initial binary classification models for Naive Bayes (.nb) and Logistic Regression (.lr) are already supplied in the models directory.
+These models have been trained using the Sentiment140 dataset.
+
+The WordScore method is a special case, it is a classifier using a word-score with positive and negative word lists.
+These lists have been concatenated from various sources. The "train" method here actually extracts most common words from a training set.
+
+The CoreNLP has 2 implementations which both use the Stanford libraries.
