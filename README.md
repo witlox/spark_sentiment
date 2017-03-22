@@ -21,3 +21,5 @@ The WordScore method is a special case, it is a classifier using a word-score wi
 These lists have been concatenated from various sources. The "train" method here actually extracts most common words from a training set.
 
 The CoreNLP has 2 implementations which both use the Stanford libraries.
+
+Note that the build will require more memory than usual, add more memory: sbt -J-Xmx4096M assembly
