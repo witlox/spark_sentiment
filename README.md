@@ -1,4 +1,6 @@
 # spark sentiment analysis of tweets
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fwitlox%2Fspark_sentiment.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fwitlox%2Fspark_sentiment?ref=badge_shield)
+
 
 Twitter Sentiment Analysis using Apache Spark
 
@@ -23,3 +25,7 @@ These lists have been concatenated from various sources. The "train" method here
 The CoreNLP has 2 implementations which both use the Stanford libraries.
 
 Note that the build will require more memory than usual, add more memory: sbt -J-Xmx4096M assembly
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fwitlox%2Fspark_sentiment.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fwitlox%2Fspark_sentiment?ref=badge_large)
